@@ -19,6 +19,7 @@ namespace TankGame
 
         public Form1()
         {
+
             InitializeComponent();
             this.DoubleBuffered = true;
             this.ClientSize = new Size(1280, 900);
