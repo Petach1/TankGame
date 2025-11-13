@@ -22,7 +22,6 @@ namespace TankGame
         private HashSet<Keys> keysPressed = new HashSet<Keys>();
         private DateTime lastPowerUpSpawn = DateTime.MinValue;
 
-        // help UI prvky
         private Button helpButton;
         private Panel helpPanel;
         private bool helpVisible = false;
@@ -168,13 +167,13 @@ namespace TankGame
                 {
                     if (player1.HasShotgun)
                     {
-                        int bulletsCount = 3; // ← shotgun má 3 střely
+                        int bulletsCount = 3; // shotgun má 3 střely
                         float startAngle = player1.Angle - 30;
                         float angleStep = 60f / (bulletsCount - 1);
                         for (int i = 0; i < bulletsCount; i++)
                         {
                             var b = new Bullet(player1.BarrelX, player1.BarrelY, startAngle + i * angleStep, player1);
-                            b.MaxBounces = 0; // ← střely shotgunu se nesmí odrazit
+                            b.MaxBounces = 0; // střely shotgunu se nesmí odrazit
                             bullets.Add(b);
                         }
                     }
@@ -214,9 +213,39 @@ namespace TankGame
                 }
             }
 
-            // --- střely ---
+            // --- střely: nejdřív kontrola zásahů ---
             foreach (var b in bullets)
+            {
+                if (!b.Destroyed)
+                {
+                    // Player 1 hit
+                    if (player1.IsAlive && b.Master != player1 &&
+                        new RectangleF(b.X, b.Y, Bullet.Size, Bullet.Size)
+                        .IntersectsWith(new RectangleF(player1.X, player1.Y, player1.TextureWidth, player1.TextureHeight)))
+                    {
+                        b.Destroyed = true;
+                        explosions.Add(new Explosion(player1.CenterX, player1.CenterY));
+                        player1.Kill();
+                        b.Master.Kills++;
+                        continue;
+                    }
+
+                    // Player 2 hit
+                    if (player2.IsAlive && b.Master != player2 &&
+                        new RectangleF(b.X, b.Y, Bullet.Size, Bullet.Size)
+                        .IntersectsWith(new RectangleF(player2.X, player2.Y, player2.TextureWidth, player2.TextureHeight)))
+                    {
+                        b.Destroyed = true;
+                        explosions.Add(new Explosion(player2.CenterX, player2.CenterY));
+                        player2.Kill();
+                        b.Master.Kills++;
+                        continue;
+                    }
+                }
+
+                // teprve pak pohyb a kolize se zdmi
                 b.Move(walls);
+            }
 
             bullets.RemoveAll(b => b.Destroyed);
 
@@ -258,7 +287,6 @@ namespace TankGame
         private void SpawnPowerUp()
         {
             PowerUpType type = rnd.Next(2) == 0 ? PowerUpType.Speed : PowerUpType.Shotgun;
-
             RectangleF spawnRect;
             bool intersects;
             float x, y;
@@ -288,7 +316,7 @@ namespace TankGame
             {
                 case PowerUpType.Speed:
                     player.SpeedMultiplier = 2f;
-                    player.PowerUpEndTime = DateTime.Now.AddSeconds(5); // ← délka powerupu
+                    player.PowerUpEndTime = DateTime.Now.AddSeconds(5);
                     break;
                 case PowerUpType.Shotgun:
                     player.HasShotgun = true;
@@ -372,7 +400,6 @@ namespace TankGame
         private DateTime RespawnTime;
         public int Kills = 0;
 
-        // powerup properties
         public float SpeedMultiplier { get; set; } = 1f;
         public bool HasShotgun { get; set; } = false;
         public DateTime PowerUpEndTime { get; set; } = DateTime.MinValue;
@@ -471,9 +498,11 @@ namespace TankGame
         public void Move(List<Rectangle> walls)
         {
             if (Destroyed) return;
+
             X += DX;
             Y += DY;
             Rectangle rect = new Rectangle((int)X, (int)Y, Size, Size);
+
             foreach (var w in walls)
             {
                 if (rect.IntersectsWith(w))
@@ -493,6 +522,7 @@ namespace TankGame
                     Bounces++;
                     if (Bounces >= MaxBounces)
                         Destroyed = true;
+
                     X += DX * 0.1f;
                     Y += DY * 0.1f;
                     break;
@@ -541,10 +571,19 @@ namespace TankGame
                 case PowerUpType.Shotgun: img = ImgShotgun; break;
                 default: img = ImgSpeed; break;
             }
-            
-            g.DrawImage(img, X, Y, Size, Size);
+
+            // zachování velikosti powerupu, ale lze upravit šířku pro Shotgun
+            int w = Size;
+            int h = Size;
+            if (Type == PowerUpType.Shotgun)
+            {
+                w = Size * 2; // širší
+            }
+
+            g.DrawImage(img, X, Y, w, h);
         }
 
         public RectangleF GetRect() => new RectangleF(X, Y, Size, Size);
     }
 }
+
