@@ -14,12 +14,14 @@ namespace TankGame
         List<Rectangle> walls = new List<Rectangle>();
         List<Bullet> bullets = new List<Bullet>();
         List<Explosion> explosions = new List<Explosion>();
+        List<PowerUp> powerUps = new List<PowerUp>();
+        Random rnd = new Random();
 
         DateTime lastShot1 = DateTime.MinValue;
         DateTime lastShot2 = DateTime.MinValue;
         private HashSet<Keys> keysPressed = new HashSet<Keys>();
+        private DateTime lastPowerUpSpawn = DateTime.MinValue;
 
-        // help UI prvky
         private Button helpButton;
         private Panel helpPanel;
         private bool helpVisible = false;
@@ -38,14 +40,15 @@ namespace TankGame
             if (!File.Exists(path2))
                 MessageBox.Show("Tank2 obrázek nenalezen: " + path2);
 
-            player1 = new Tank(path1, 150, 150, Color.Blue);
-            player2 = new Tank(path2, 1100, 700, Color.Green);
-            //test
+            player1 = new Tank(path1, 150, 150, Color.Green);
+            player2 = new Tank(path2, 1100, 700, Color.Blue);
+
             // --- zdi ---
             walls.Add(new Rectangle(0, 0, ClientSize.Width, 10));
             walls.Add(new Rectangle(0, ClientSize.Height - 10, ClientSize.Width, 10));
             walls.Add(new Rectangle(0, 0, 10, ClientSize.Height));
             walls.Add(new Rectangle(ClientSize.Width - 10, 0, 10, ClientSize.Height));
+
             walls.Add(new Rectangle(350, 200, 100, 40));
             walls.Add(new Rectangle(600, 100, 150, 25));
             walls.Add(new Rectangle(900, 180, 130, 35));
@@ -144,16 +147,39 @@ namespace TankGame
 
         private void GameLoop(object sender, EventArgs e)
         {
+            // --- spawn powerup každých 12s ---
+            if ((DateTime.Now - lastPowerUpSpawn).TotalSeconds >= 12)
+            {
+                SpawnPowerUp();
+                lastPowerUpSpawn = DateTime.Now;
+            }
+
             // --- Player 1 ---
             if (player1.IsAlive)
             {
                 if (keysPressed.Contains(Keys.A)) player1.Angle -= 5;
                 if (keysPressed.Contains(Keys.D)) player1.Angle += 5;
-                if (keysPressed.Contains(Keys.W)) player1.Move(5, walls);
-                if (keysPressed.Contains(Keys.S)) player1.Move(-5, walls);
+                if (keysPressed.Contains(Keys.W)) player1.Move(5 * player1.SpeedMultiplier, walls);
+                if (keysPressed.Contains(Keys.S)) player1.Move(-5 * player1.SpeedMultiplier, walls);
+
                 if (keysPressed.Contains(Keys.Space) && (DateTime.Now - lastShot1).TotalSeconds >= 0.5)
                 {
-                    bullets.Add(new Bullet(player1.BarrelX, player1.BarrelY, player1.Angle, player1));
+                    if (player1.HasShotgun)
+                    {
+                        int bulletsCount = 3; // ← 3 střely
+                        float startAngle = player1.Angle - 30;
+                        float angleStep = 60f / (bulletsCount - 1);
+                        for (int i = 0; i < bulletsCount; i++)
+                        {
+                            var b = new Bullet(player1.BarrelX, player1.BarrelY, startAngle + i * angleStep, player1);
+                            b.MaxBounces = 0; // ← zničí se při nárazu
+                            bullets.Add(b);
+                        }
+                    }
+                    else
+                    {
+                        bullets.Add(new Bullet(player1.BarrelX, player1.BarrelY, player1.Angle, player1));
+                    }
                     lastShot1 = DateTime.Now;
                 }
             }
@@ -163,11 +189,27 @@ namespace TankGame
             {
                 if (keysPressed.Contains(Keys.Left)) player2.Angle -= 5;
                 if (keysPressed.Contains(Keys.Right)) player2.Angle += 5;
-                if (keysPressed.Contains(Keys.Up)) player2.Move(5, walls);
-                if (keysPressed.Contains(Keys.Down)) player2.Move(-5, walls);
+                if (keysPressed.Contains(Keys.Up)) player2.Move(5 * player2.SpeedMultiplier, walls);
+                if (keysPressed.Contains(Keys.Down)) player2.Move(-5 * player2.SpeedMultiplier, walls);
+
                 if (keysPressed.Contains(Keys.L) && (DateTime.Now - lastShot2).TotalSeconds >= 0.5)
                 {
-                    bullets.Add(new Bullet(player2.BarrelX, player2.BarrelY, player2.Angle, player2));
+                    if (player2.HasShotgun)
+                    {
+                        int bulletsCount = 3; // ← 3 střely
+                        float startAngle = player2.Angle - 30;
+                        float angleStep = 60f / (bulletsCount - 1);
+                        for (int i = 0; i < bulletsCount; i++)
+                        {
+                            var b = new Bullet(player2.BarrelX, player2.BarrelY, startAngle + i * angleStep, player2);
+                            b.MaxBounces = 0; // ← zničí se při nárazu
+                            bullets.Add(b);
+                        }
+                    }
+                    else
+                    {
+                        bullets.Add(new Bullet(player2.BarrelX, player2.BarrelY, player2.Angle, player2));
+                    }
                     lastShot2 = DateTime.Now;
                 }
             }
@@ -183,7 +225,7 @@ namespace TankGame
                     .IntersectsWith(new Rectangle((int)player1.X, (int)player1.Y, player1.TextureWidth, player1.TextureHeight)))
                 {
                     b.Destroyed = true;
-                    explosions.Add(new Explosion(player1.CenterX, player1.CenterY)); // 💥
+                    explosions.Add(new Explosion(player1.CenterX, player1.CenterY));
                     player1.Kill();
                     b.Master.Kills++;
                 }
@@ -194,7 +236,7 @@ namespace TankGame
                     .IntersectsWith(new Rectangle((int)player2.X, (int)player2.Y, player2.TextureWidth, player2.TextureHeight)))
                 {
                     b.Destroyed = true;
-                    explosions.Add(new Explosion(player2.CenterX, player2.CenterY)); // 💥
+                    explosions.Add(new Explosion(player2.CenterX, player2.CenterY));
                     player2.Kill();
                     b.Master.Kills++;
                 }
@@ -207,7 +249,77 @@ namespace TankGame
                 ex.Update();
             explosions.RemoveAll(ex => ex.Finished);
 
+            // --- powerup sběr ---
+            foreach (var p in powerUps.ToArray())
+            {
+                if (player1.IsAlive && p.GetRect().IntersectsWith(new RectangleF(player1.X, player1.Y, player1.TextureWidth, player1.TextureHeight)))
+                {
+                    ActivatePowerUp(player1, p.Type);
+                    powerUps.Remove(p);
+                }
+                else if (player2.IsAlive && p.GetRect().IntersectsWith(new RectangleF(player2.X, player2.Y, player2.TextureWidth, player2.TextureHeight)))
+                {
+                    ActivatePowerUp(player2, p.Type);
+                    powerUps.Remove(p);
+                }
+            }
+
+            // --- powerup timeout ---
+            if (player1.PowerUpEndTime < DateTime.Now)
+            {
+                player1.SpeedMultiplier = 1f;
+                player1.HasShotgun = false;
+            }
+            if (player2.PowerUpEndTime < DateTime.Now)
+            {
+                player2.SpeedMultiplier = 1f;
+                player2.HasShotgun = false;
+            }
+
             Invalidate();
+        }
+
+        private void SpawnPowerUp()
+        {
+            PowerUpType type = rnd.Next(2) == 0 ? PowerUpType.Speed : PowerUpType.Shotgun;
+
+            RectangleF spawnRect;
+            bool intersects;
+            float x, y;
+
+            do
+            {
+                x = rnd.Next(50, ClientSize.Width - 50);
+                y = rnd.Next(50, ClientSize.Height - 50);
+                spawnRect = new RectangleF(x, y, PowerUp.Size, PowerUp.Size);
+
+                intersects = false;
+                foreach (var wall in walls)
+                    if (spawnRect.IntersectsWith(wall))
+                    {
+                        intersects = true;
+                        break;
+                    }
+
+            } while (intersects);
+
+            powerUps.Add(new PowerUp(x, y, type));
+        }
+
+        //TADY NASTAVIT POWERUP SPEED A DURATION
+        private void ActivatePowerUp(Tank player, PowerUpType type)
+        {
+            switch (type)
+            {
+                case PowerUpType.Speed:
+                    player.SpeedMultiplier = 2f;
+                    player.PowerUpEndTime = DateTime.Now.AddSeconds(5); //  5 sekund
+                    break;
+                case PowerUpType.Shotgun:
+                    player.HasShotgun = true;
+                    player.PowerUpEndTime = DateTime.Now.AddSeconds(5); //  5 sekund
+                    break;
+            }
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -218,13 +330,15 @@ namespace TankGame
                 using (Brush wallBrush = new SolidBrush(Color.FromArgb(255, 75, 0, 130)))
                     g.FillRectangle(wallBrush, w);
 
+            foreach (var p in powerUps)
+                p.Draw(g);
+
             player1.Draw(g);
             player2.Draw(g);
 
             foreach (var b in bullets)
                 b.Draw(g);
 
-            // 💥 vykresli exploze
             foreach (var ex in explosions)
                 ex.Draw(g);
 
@@ -244,8 +358,8 @@ namespace TankGame
 
         public Explosion(float x, float y)
         {
-            X = x;
-            Y = y;
+            this.X = x;
+            this.Y = y;
         }
 
         public void Update() => frame++;
@@ -276,13 +390,17 @@ namespace TankGame
         private int OrigTextureWidth;
         private int OrigTextureHeight;
         private Color TankColor;
-
         private int BarrelOffsetXInTexture = 297;
         private int BarrelOffsetYInTexture = 180;
 
         public bool IsAlive = true;
         private DateTime RespawnTime;
         public int Kills = 0;
+
+        // powerup properties
+        public float SpeedMultiplier { get; set; } = 1f;
+        public bool HasShotgun { get; set; } = false;
+        public DateTime PowerUpEndTime { get; set; } = DateTime.MinValue;
 
         public Tank(string filename, float x, float y, Color color)
         {
@@ -364,7 +482,7 @@ namespace TankGame
         public Tank Master;
 
         public const int Size = 13;
-        public const int MaxBounces = 3;
+        public int MaxBounces = 3;
 
         public Bullet(float x, float y, float angle, Tank master)
         {
@@ -385,6 +503,12 @@ namespace TankGame
             {
                 if (rect.IntersectsWith(w))
                 {
+                    if (MaxBounces == 0)
+                    {
+                        Destroyed = true;
+                        break;
+                    }
+
                     Rectangle overlap = Rectangle.Intersect(rect, w);
                     bool reflectX = overlap.Width < overlap.Height;
                     if (reflectX)
@@ -400,6 +524,7 @@ namespace TankGame
                     Bounces++;
                     if (Bounces >= MaxBounces)
                         Destroyed = true;
+
                     X += DX * 0.1f;
                     Y += DY * 0.1f;
                     break;
@@ -412,5 +537,44 @@ namespace TankGame
             if (!Destroyed)
                 g.FillEllipse(Brushes.Black, X, Y, Size, Size);
         }
+    }
+
+    // === POWERUP ===
+    public enum PowerUpType { Speed, Shotgun }
+
+    public class PowerUp
+    {
+        public float X, Y;
+        public const int Size = 30;
+        public PowerUpType Type;
+        public DateTime SpawnTime;
+
+        public PowerUp(float x, float y, PowerUpType type)
+        {
+            this.X = x;
+            this.Y = y;
+            this.Type = type;
+            this.SpawnTime = DateTime.Now;
+        }
+
+        public void Draw(Graphics g)
+        {
+            Brush brush;
+            switch (Type)
+            {
+                case PowerUpType.Speed:
+                    brush = Brushes.Orange;
+                    break;
+                case PowerUpType.Shotgun:
+                    brush = Brushes.Purple;
+                    break;
+                default:
+                    brush = Brushes.White;
+                    break;
+            }
+            g.FillEllipse(brush, X, Y, Size, Size);
+        }
+
+        public RectangleF GetRect() => new RectangleF(X, Y, Size, Size);
     }
 }
