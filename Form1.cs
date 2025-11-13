@@ -13,7 +13,7 @@ namespace TankGame
         Tank player1, player2;
         List<Rectangle> walls = new List<Rectangle>();
         List<Bullet> bullets = new List<Bullet>();
-        List<Explosion> explosions = new List<Explosion>(); // 💥 přidáno
+        List<Explosion> explosions = new List<Explosion>();
 
         DateTime lastShot1 = DateTime.MinValue;
         DateTime lastShot2 = DateTime.MinValue;
