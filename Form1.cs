@@ -13,6 +13,8 @@ namespace TankGame
         Tank player1, player2;
         List<Rectangle> walls = new List<Rectangle>();
         List<Bullet> bullets = new List<Bullet>();
+        List<Explosion> explosions = new List<Explosion>(); // 💥 přidáno
+
         DateTime lastShot1 = DateTime.MinValue;
         DateTime lastShot2 = DateTime.MinValue;
         private HashSet<Keys> keysPressed = new HashSet<Keys>();
@@ -27,8 +29,6 @@ namespace TankGame
             InitializeComponent();
             this.DoubleBuffered = true;
             this.ClientSize = new Size(1280, 900);
-
-            // důležité: necháme form dostávat klávesy dřív než buttony
             this.KeyPreview = true;
 
             string path1 = Path.Combine(Application.StartupPath, "Data", "tankmodel.png");
@@ -46,7 +46,6 @@ namespace TankGame
             walls.Add(new Rectangle(0, ClientSize.Height - 10, ClientSize.Width, 10));
             walls.Add(new Rectangle(0, 0, 10, ClientSize.Height));
             walls.Add(new Rectangle(ClientSize.Width - 10, 0, 10, ClientSize.Height));
-
             walls.Add(new Rectangle(350, 200, 100, 40));
             walls.Add(new Rectangle(600, 100, 150, 25));
             walls.Add(new Rectangle(900, 180, 130, 35));
@@ -71,15 +70,11 @@ namespace TankGame
             helpButton.ForeColor = Color.White;
             helpButton.FlatStyle = FlatStyle.Flat;
             helpButton.FlatAppearance.BorderSize = 0;
-
-            // zabráníme, aby button mohl získat fokus přes tab nebo kliknutí (kliknutí ho sice fokus dá, ale KeyPreview + SuppressKeyPress to ochrání)
             helpButton.TabStop = false;
 
-            // kruhový tvar pomocí GraphicsPath
             GraphicsPath gp = new GraphicsPath();
             gp.AddEllipse(0, 0, helpButton.Width, helpButton.Height);
             helpButton.Region = new Region(gp);
-
             helpButton.Click += (s, e) => ToggleHelpPanel();
             Controls.Add(helpButton);
 
@@ -87,7 +82,7 @@ namespace TankGame
             helpPanel = new Panel();
             helpPanel.Size = new Size(400, 300);
             helpPanel.Location = new Point(20, ClientSize.Height - 380);
-            helpPanel.BackColor = Color.FromArgb(180, 0, 0, 0); // poloprůhledný černý
+            helpPanel.BackColor = Color.FromArgb(180, 0, 0, 0);
             helpPanel.Visible = false;
             helpPanel.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
 
@@ -104,8 +99,7 @@ namespace TankGame
                 "SPACE – vystřelit\n\n" +
                 "Player 2:\n" +
                 "↑ / ↓ / ← / → – pohyb\n" +
-                "L – vystřelit\n\n" +
-                "Klikni na ? znovu pro zavření";
+                "L – vystřelit\n";
 
             helpPanel.Controls.Add(helpText);
             Controls.Add(helpPanel);
@@ -127,33 +121,23 @@ namespace TankGame
 
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
-            // přidej do stavu stisknutých kláves
             keysPressed.Add(e.KeyCode);
-
-            // potlačíme další zpracování klávesy (takže kontrolky - třeba tlačítko - nedostanou Space jako click)
             e.SuppressKeyPress = true;
         }
 
         private void Form1_KeyUp(object sender, KeyEventArgs e)
         {
             keysPressed.Remove(e.KeyCode);
-
-            // přidáme i jistotu, že se uvolní i šipky
-            if (e.KeyCode == Keys.Up || e.KeyCode == Keys.Down ||
-                e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
-            {
-                keysPressed.Remove(e.KeyCode);
-            }
-
             e.SuppressKeyPress = true;
         }
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             if (keyData == Keys.Up || keyData == Keys.Down ||
                 keyData == Keys.Left || keyData == Keys.Right)
             {
                 keysPressed.Add(keyData);
-                return true; 
+                return true;
             }
             return base.ProcessCmdKey(ref msg, keyData);
         }
@@ -194,27 +178,35 @@ namespace TankGame
                 b.Move(walls);
 
                 // Player 1 hit
-                if (player1.IsAlive && b.Owner != player1 &&
+                if (player1.IsAlive && b.Master != player1 &&
                     new Rectangle((int)b.X, (int)b.Y, Bullet.Size, Bullet.Size)
                     .IntersectsWith(new Rectangle((int)player1.X, (int)player1.Y, player1.TextureWidth, player1.TextureHeight)))
                 {
                     b.Destroyed = true;
+                    explosions.Add(new Explosion(player1.CenterX, player1.CenterY)); // 💥
                     player1.Kill();
-                    b.Owner.Kills++;
+                    b.Master.Kills++;
                 }
 
                 // Player 2 hit
-                if (player2.IsAlive && b.Owner != player2 &&
+                if (player2.IsAlive && b.Master != player2 &&
                     new Rectangle((int)b.X, (int)b.Y, Bullet.Size, Bullet.Size)
                     .IntersectsWith(new Rectangle((int)player2.X, (int)player2.Y, player2.TextureWidth, player2.TextureHeight)))
                 {
                     b.Destroyed = true;
+                    explosions.Add(new Explosion(player2.CenterX, player2.CenterY)); // 💥
                     player2.Kill();
-                    b.Owner.Kills++;
+                    b.Master.Kills++;
                 }
             }
 
             bullets.RemoveAll(b => b.Destroyed);
+
+            // --- update exploze ---
+            foreach (var ex in explosions)
+                ex.Update();
+            explosions.RemoveAll(ex => ex.Finished);
+
             Invalidate();
         }
 
@@ -232,8 +224,43 @@ namespace TankGame
             foreach (var b in bullets)
                 b.Draw(g);
 
-            g.DrawString($"Player1 Kills: {player1.Kills}", new Font("Arial", 16, FontStyle.Bold), Brushes.Blue, 10, 10);
-            g.DrawString($"Player2 Kills: {player2.Kills}", new Font("Arial", 16, FontStyle.Bold), Brushes.Green, 10, 40);
+            // 💥 vykresli exploze
+            foreach (var ex in explosions)
+                ex.Draw(g);
+
+            g.DrawString($"Green Kills: {player1.Kills}", new Font("Consolas", 16, FontStyle.Bold), Brushes.Green, 10, 10);
+            g.DrawString($"Blue Kills: {player2.Kills}", new Font("Consolas", 16, FontStyle.Bold), Brushes.Blue, 10, 40);
+        }
+    }
+
+    // === EXPLOSION ===
+    public class Explosion
+    {
+        public float X, Y;
+        private int frame = 0;
+        private int maxFrames = 30;
+        private float maxSize = 120f;
+        public bool Finished => frame >= maxFrames;
+
+        public Explosion(float x, float y)
+        {
+            X = x;
+            Y = y;
+        }
+
+        public void Update() => frame++;
+
+        public void Draw(Graphics g)
+        {
+            if (Finished) return;
+            float progress = frame / (float)maxFrames;
+            float size = maxSize * progress;
+            int alpha = (int)(255 * (1f - progress));
+
+            using (Brush b = new SolidBrush(Color.FromArgb(alpha, 255, 120, 0)))
+                g.FillEllipse(b, X - size / 2f, Y - size / 2f, size, size);
+            using (Pen p = new Pen(Color.FromArgb(alpha, 255, 220, 120), 3))
+                g.DrawEllipse(p, X - size / 2f, Y - size / 2f, size, size);
         }
     }
 
@@ -259,16 +286,13 @@ namespace TankGame
 
         public Tank(string filename, float x, float y, Color color)
         {
-            X = x;
-            Y = y;
-            StartX = x;
-            StartY = y;
-            TankColor = color;
+            this.X = x;
+            this.Y = y;
+            this.StartX = x;
+            this.StartY = y;
+            this.TankColor = color;
 
-            try
-            {
-                Texture = new Bitmap(filename);
-            }
+            try { Texture = new Bitmap(filename); }
             catch
             {
                 Texture = new Bitmap(60, 36);
@@ -278,7 +302,6 @@ namespace TankGame
 
             OrigTextureWidth = Texture.Width;
             OrigTextureHeight = Texture.Height;
-
             TextureWidth = 60;
             TextureHeight = 36;
             Texture = new Bitmap(Texture, TextureWidth, TextureHeight);
@@ -289,22 +312,17 @@ namespace TankGame
 
         public float CenterX => X + TextureWidth / 2;
         public float CenterY => Y + TextureHeight / 2;
-
         public float BarrelX => X + BarrelOffsetXInTexture + (float)Math.Cos(Angle * Math.PI / 180) * 18;
         public float BarrelY => Y + BarrelOffsetYInTexture + (float)Math.Sin(Angle * Math.PI / 180) * 18 - 5;
 
         public void Move(float speed, List<Rectangle> walls)
         {
             if (!IsAlive) return;
-
             float newX = X + (float)Math.Cos(Angle * Math.PI / 180) * speed;
             float newY = Y + (float)Math.Sin(Angle * Math.PI / 180) * speed;
-
             Rectangle tankRect = new Rectangle((int)newX, (int)newY, TextureWidth, TextureHeight);
             foreach (var w in walls)
-                if (w.IntersectsWith(tankRect))
-                    return;
-
+                if (w.IntersectsWith(tankRect)) return;
             X = newX;
             Y = newY;
         }
@@ -343,35 +361,32 @@ namespace TankGame
         public float DX, DY;
         public int Bounces = 0;
         public bool Destroyed = false;
-        public Tank Owner;
+        public Tank Master;
 
         public const int Size = 13;
         public const int MaxBounces = 3;
 
-        public Bullet(float x, float y, float angle, Tank owner)
+        public Bullet(float x, float y, float angle, Tank master)
         {
-            X = x;
-            Y = y;
-            DX = (float)Math.Cos(angle * Math.PI / 180) * 8;
-            DY = (float)Math.Sin(angle * Math.PI / 180) * 8;
-            Owner = owner;
+            this.X = x;
+            this.Y = y;
+            this.DX = (float)Math.Cos(angle * Math.PI / 180) * 8;
+            this.DY = (float)Math.Sin(angle * Math.PI / 180) * 8;
+            this.Master = master;
         }
 
         public void Move(List<Rectangle> walls)
         {
             if (Destroyed) return;
-
             X += DX;
             Y += DY;
             Rectangle rect = new Rectangle((int)X, (int)Y, Size, Size);
-
             foreach (var w in walls)
             {
                 if (rect.IntersectsWith(w))
                 {
                     Rectangle overlap = Rectangle.Intersect(rect, w);
                     bool reflectX = overlap.Width < overlap.Height;
-
                     if (reflectX)
                     {
                         DX = -DX;
@@ -382,11 +397,9 @@ namespace TankGame
                         DY = -DY;
                         Y += DY > 0 ? overlap.Height + 1 : -overlap.Height - 1;
                     }
-
                     Bounces++;
                     if (Bounces >= MaxBounces)
                         Destroyed = true;
-
                     X += DX * 0.1f;
                     Y += DY * 0.1f;
                     break;
