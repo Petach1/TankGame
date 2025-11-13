@@ -238,7 +238,7 @@ namespace TankGame
     {
         public float X, Y;
         private int frame = 0;
-        private int maxFrames = 30;
+        private int maxFrames = 15;
         private float maxSize = 120f;
         public bool Finished => frame >= maxFrames;
 
