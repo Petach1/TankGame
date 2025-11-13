@@ -167,7 +167,7 @@ namespace TankGame
                 {
                     if (player1.HasShotgun)
                     {
-                        int bulletsCount = 3; // shotgun má 3 střely
+                        int bulletsCount = 4; // shotgun má 3 střely
                         float startAngle = player1.Angle - 30;
                         float angleStep = 60f / (bulletsCount - 1);
                         for (int i = 0; i < bulletsCount; i++)
@@ -196,7 +196,7 @@ namespace TankGame
                 {
                     if (player2.HasShotgun)
                     {
-                        int bulletsCount = 3;
+                        int bulletsCount = 4;
                         float startAngle = player2.Angle - 30;
                         float angleStep = 60f / (bulletsCount - 1);
                         for (int i = 0; i < bulletsCount; i++)
@@ -213,7 +213,6 @@ namespace TankGame
                 }
             }
 
-            // --- střely: nejdřív kontrola zásahů ---
             foreach (var b in bullets)
             {
                 if (!b.Destroyed)
@@ -243,7 +242,6 @@ namespace TankGame
                     }
                 }
 
-                // teprve pak pohyb a kolize se zdmi
                 b.Move(walls);
             }
 
@@ -572,15 +570,14 @@ namespace TankGame
                 default: img = ImgSpeed; break;
             }
 
-            // zachování velikosti powerupu, ale lze upravit šířku pro Shotgun
-            int w = Size;
-            int h = Size;
+            double w = Size;
+            double h = Size;
             if (Type == PowerUpType.Shotgun)
             {
-                w = Size * 2; // širší
+                w = Size * 2.5; // širší
             }
 
-            g.DrawImage(img, X, Y, w, h);
+            g.DrawImage(img, X, Y, (int)w, (int)h);
         }
 
         public RectangleF GetRect() => new RectangleF(X, Y, Size, Size);
