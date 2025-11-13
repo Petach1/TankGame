@@ -40,7 +40,7 @@ namespace TankGame
 
             player1 = new Tank(path1, 150, 150, Color.Blue);
             player2 = new Tank(path2, 1100, 700, Color.Green);
-
+            //test
             // --- zdi ---
             walls.Add(new Rectangle(0, 0, ClientSize.Width, 10));
             walls.Add(new Rectangle(0, ClientSize.Height - 10, ClientSize.Width, 10));
