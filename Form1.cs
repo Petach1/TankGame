@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
 
@@ -14,32 +15,38 @@ namespace TankGame
         List<Bullet> bullets = new List<Bullet>();
         DateTime lastShot1 = DateTime.MinValue;
         DateTime lastShot2 = DateTime.MinValue;
-
         private HashSet<Keys> keysPressed = new HashSet<Keys>();
+
+        // help UI prvky
+        private Button helpButton;
+        private Panel helpPanel;
+        private bool helpVisible = false;
 
         public Form1()
         {
-
             InitializeComponent();
             this.DoubleBuffered = true;
             this.ClientSize = new Size(1280, 900);
+
+            // důležité: necháme form dostávat klávesy dřív než buttony
+            this.KeyPreview = true;
 
             string path1 = Path.Combine(Application.StartupPath, "Data", "tankmodel.png");
             if (!File.Exists(path1))
                 MessageBox.Show("Tank1 obrázek nenalezen: " + path1);
             string path2 = Path.Combine(Application.StartupPath, "Data", "tankmodel1.png");
-
+            if (!File.Exists(path2))
+                MessageBox.Show("Tank2 obrázek nenalezen: " + path2);
 
             player1 = new Tank(path1, 150, 150, Color.Blue);
             player2 = new Tank(path2, 1100, 700, Color.Green);
 
-            // okrajové zdi
+            // --- zdi ---
             walls.Add(new Rectangle(0, 0, ClientSize.Width, 10));
             walls.Add(new Rectangle(0, ClientSize.Height - 10, ClientSize.Width, 10));
             walls.Add(new Rectangle(0, 0, 10, ClientSize.Height));
             walls.Add(new Rectangle(ClientSize.Width - 10, 0, 10, ClientSize.Height));
 
-            // náhodné zdi uvnitř
             walls.Add(new Rectangle(350, 200, 100, 40));
             walls.Add(new Rectangle(600, 100, 150, 25));
             walls.Add(new Rectangle(900, 180, 130, 35));
@@ -53,8 +60,57 @@ namespace TankGame
             walls.Add(new Rectangle(100, 700, 100, 35));
             walls.Add(new Rectangle(400, 750, 140, 30));
             walls.Add(new Rectangle(700, 800, 150, 40));
-            
 
+            // --- HELP button ---
+            helpButton = new Button();
+            helpButton.Text = "?";
+            helpButton.Font = new Font("Segoe UI", 14, FontStyle.Bold);
+            helpButton.Size = new Size(50, 50);
+            helpButton.Location = new Point(20, ClientSize.Height - 70);
+            helpButton.BackColor = Color.FromArgb(200, 60, 60, 60);
+            helpButton.ForeColor = Color.White;
+            helpButton.FlatStyle = FlatStyle.Flat;
+            helpButton.FlatAppearance.BorderSize = 0;
+
+            // zabráníme, aby button mohl získat fokus přes tab nebo kliknutí (kliknutí ho sice fokus dá, ale KeyPreview + SuppressKeyPress to ochrání)
+            helpButton.TabStop = false;
+
+            // kruhový tvar pomocí GraphicsPath
+            GraphicsPath gp = new GraphicsPath();
+            gp.AddEllipse(0, 0, helpButton.Width, helpButton.Height);
+            helpButton.Region = new Region(gp);
+
+            helpButton.Click += (s, e) => ToggleHelpPanel();
+            Controls.Add(helpButton);
+
+            // --- HELP panel ---
+            helpPanel = new Panel();
+            helpPanel.Size = new Size(400, 300);
+            helpPanel.Location = new Point(20, ClientSize.Height - 380);
+            helpPanel.BackColor = Color.FromArgb(180, 0, 0, 0); // poloprůhledný černý
+            helpPanel.Visible = false;
+            helpPanel.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
+
+            Label helpText = new Label();
+            helpText.ForeColor = Color.White;
+            helpText.Font = new Font("Consolas", 12);
+            helpText.AutoSize = false;
+            helpText.Dock = DockStyle.Fill;
+            helpText.TextAlign = ContentAlignment.MiddleCenter;
+            helpText.Text =
+                "=== Controls ===\n\n" +
+                "Player 1:\n" +
+                "W / A / S / D – pohyb\n" +
+                "SPACE – vystřelit\n\n" +
+                "Player 2:\n" +
+                "↑ / ↓ / ← / → – pohyb\n" +
+                "L – vystřelit\n\n" +
+                "Klikni na ? znovu pro zavření";
+
+            helpPanel.Controls.Add(helpText);
+            Controls.Add(helpPanel);
+
+            // --- herní timer ---
             gameTimer.Interval = 16;
             gameTimer.Tick += GameLoop;
             gameTimer.Start();
@@ -63,14 +119,43 @@ namespace TankGame
             this.KeyUp += Form1_KeyUp;
         }
 
+        private void ToggleHelpPanel()
+        {
+            helpVisible = !helpVisible;
+            helpPanel.Visible = helpVisible;
+        }
+
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
+            // přidej do stavu stisknutých kláves
             keysPressed.Add(e.KeyCode);
+
+            // potlačíme další zpracování klávesy (takže kontrolky - třeba tlačítko - nedostanou Space jako click)
+            e.SuppressKeyPress = true;
         }
 
         private void Form1_KeyUp(object sender, KeyEventArgs e)
         {
             keysPressed.Remove(e.KeyCode);
+
+            // přidáme i jistotu, že se uvolní i šipky
+            if (e.KeyCode == Keys.Up || e.KeyCode == Keys.Down ||
+                e.KeyCode == Keys.Left || e.KeyCode == Keys.Right)
+            {
+                keysPressed.Remove(e.KeyCode);
+            }
+
+            e.SuppressKeyPress = true;
+        }
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.Up || keyData == Keys.Down ||
+                keyData == Keys.Left || keyData == Keys.Right)
+            {
+                keysPressed.Add(keyData);
+                return true; 
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void GameLoop(object sender, EventArgs e)
@@ -78,10 +163,10 @@ namespace TankGame
             // --- Player 1 ---
             if (player1.IsAlive)
             {
-                if (keysPressed.Contains(Keys.Left)) player1.Angle -= 5;
-                if (keysPressed.Contains(Keys.Right)) player1.Angle += 5;
-                if (keysPressed.Contains(Keys.Up)) player1.Move(5, walls);
-                if (keysPressed.Contains(Keys.Down)) player1.Move(-5, walls);
+                if (keysPressed.Contains(Keys.A)) player1.Angle -= 5;
+                if (keysPressed.Contains(Keys.D)) player1.Angle += 5;
+                if (keysPressed.Contains(Keys.W)) player1.Move(5, walls);
+                if (keysPressed.Contains(Keys.S)) player1.Move(-5, walls);
                 if (keysPressed.Contains(Keys.Space) && (DateTime.Now - lastShot1).TotalSeconds >= 0.5)
                 {
                     bullets.Add(new Bullet(player1.BarrelX, player1.BarrelY, player1.Angle, player1));
@@ -92,18 +177,18 @@ namespace TankGame
             // --- Player 2 ---
             if (player2.IsAlive)
             {
-                if (keysPressed.Contains(Keys.A)) player2.Angle -= 5;
-                if (keysPressed.Contains(Keys.D)) player2.Angle += 5;
-                if (keysPressed.Contains(Keys.W)) player2.Move(5, walls);
-                if (keysPressed.Contains(Keys.S)) player2.Move(-5, walls);
-                if (keysPressed.Contains(Keys.Q) && (DateTime.Now - lastShot2).TotalSeconds >= 0.5)
+                if (keysPressed.Contains(Keys.Left)) player2.Angle -= 5;
+                if (keysPressed.Contains(Keys.Right)) player2.Angle += 5;
+                if (keysPressed.Contains(Keys.Up)) player2.Move(5, walls);
+                if (keysPressed.Contains(Keys.Down)) player2.Move(-5, walls);
+                if (keysPressed.Contains(Keys.L) && (DateTime.Now - lastShot2).TotalSeconds >= 0.5)
                 {
                     bullets.Add(new Bullet(player2.BarrelX, player2.BarrelY, player2.Angle, player2));
                     lastShot2 = DateTime.Now;
                 }
             }
 
-            // --- Update bullets & check hits ---
+            // --- střely ---
             foreach (var b in bullets)
             {
                 b.Move(walls);
@@ -130,7 +215,6 @@ namespace TankGame
             }
 
             bullets.RemoveAll(b => b.Destroyed);
-
             Invalidate();
         }
 
@@ -138,28 +222,22 @@ namespace TankGame
         {
             Graphics g = e.Graphics;
 
-            // draw walls
             foreach (var w in walls)
-                using (Brush wallBrush = new SolidBrush(Color.FromArgb(255, 75, 0, 130))) // IndigoRed
+                using (Brush wallBrush = new SolidBrush(Color.FromArgb(255, 75, 0, 130)))
                     g.FillRectangle(wallBrush, w);
 
-            // draw tanks
             player1.Draw(g);
             player2.Draw(g);
 
-            // draw bullets
             foreach (var b in bullets)
                 b.Draw(g);
 
-            // draw score
             g.DrawString($"Player1 Kills: {player1.Kills}", new Font("Arial", 16, FontStyle.Bold), Brushes.Blue, 10, 10);
             g.DrawString($"Player2 Kills: {player2.Kills}", new Font("Arial", 16, FontStyle.Bold), Brushes.Green, 10, 40);
         }
     }
 
-    // ======================================
-    // TANK
-    // ======================================
+    // === TANK ===
     public class Tank
     {
         public float X, Y;
@@ -258,9 +336,7 @@ namespace TankGame
         }
     }
 
-    // ======================================
-    // BULLET
-    // ======================================
+    // === BULLET ===
     public class Bullet
     {
         public float X, Y;

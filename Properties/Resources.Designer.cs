@@ -59,15 +59,5 @@ namespace TankGame.Properties {
                 resourceCulture = value;
             }
         }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Bitmap.
-        /// </summary>
-        internal static System.Drawing.Bitmap _95F5417D_7A9B_4BDA_9D76_D956245FC646 {
-            get {
-                object obj = ResourceManager.GetObject("95F5417D-7A9B-4BDA-9D76-D956245FC646", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
     }
 }
